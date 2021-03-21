@@ -205,7 +205,9 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 			tps->freeRotationEnabled = true;
 
 			auto player = RE::PlayerCharacter::GetSingleton();
-			if (player->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
+			int iState = 0;
+			player->GetGraphVariableInt("iState", iState);
+			if (iState > 0 && iState != 9)
 			{
 				player->data.angle.x -= tps->freeRotation.y;
 				tps->freeRotation.y = 0.0f;

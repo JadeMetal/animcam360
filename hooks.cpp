@@ -199,7 +199,11 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 
 	bool bFovSlideMode = RE::PlayerControls::GetSingleton()->data.fovSlideMode;
 
-	if (bAnimCam && !bFovSlideMode)
+	if (
+		RE::PlayerControls::GetSingleton()->movementHandler->inputEventHandlingEnabled
+		&& RE::PlayerControls::GetSingleton()->lookHandler->inputEventHandlingEnabled
+		&& bAnimCam 
+		&& !bFovSlideMode)
 	{
 		bool bFreeRotation = false;
 		bFreeRotation = tps->freeRotationEnabled;
@@ -210,8 +214,6 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 		auto player = RE::PlayerCharacter::GetSingleton();
 		player->data.angle.x -= tps->freeRotation.y;
 		tps->freeRotation.y = 0.0f;
-		//tps->freeRotation.y -= player->data.angle.x;
-		//player->data.angle.x = 0.0f;
 
 		originUpdate(tps, a_nextState);
 

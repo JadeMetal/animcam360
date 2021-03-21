@@ -112,9 +112,6 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 					tps->freeRotation.x = diffAngleZ;
 
 					player->data.angle.z += (rotX * SideMoveRotationScale);
-
-					tps->freeRotation.y -= player->data.angle.x;
-					player->data.angle.x = 0.0f;
 				}
 			}
 			else
@@ -194,36 +191,36 @@ void ProcessButtonEx(RE::MovementHandler* _this,
 //Rotation Update
 void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 {
-	bool bAnimCam = false;
-	bAnimCam = tps->toggleAnimCam;
+		bool bAnimCam = false;
+		bAnimCam = tps->toggleAnimCam;
 
-	bool bFovSlideMode = RE::PlayerControls::GetSingleton()->data.fovSlideMode;
+		bool bFovSlideMode = RE::PlayerControls::GetSingleton()->data.fovSlideMode;
 
-	if (
-		RE::PlayerControls::GetSingleton()->movementHandler->inputEventHandlingEnabled
-		&& RE::PlayerControls::GetSingleton()->lookHandler->inputEventHandlingEnabled
-		&& bAnimCam 
-		&& !bFovSlideMode)
-	{
-		bool bFreeRotation = false;
-		bFreeRotation = tps->freeRotationEnabled;
-		
-		tps->toggleAnimCam = false;
-		tps->freeRotationEnabled = true;
+		if (bAnimCam && !bFovSlideMode)
+		{
+			bool bFreeRotation = false;
+			bFreeRotation = tps->freeRotationEnabled;
 
-		auto player = RE::PlayerCharacter::GetSingleton();
-		player->data.angle.x -= tps->freeRotation.y;
-		tps->freeRotation.y = 0.0f;
+			tps->toggleAnimCam = false;
+			tps->freeRotationEnabled = true;
 
-		originUpdate(tps, a_nextState);
+			auto player = RE::PlayerCharacter::GetSingleton();
+			if (player->GetAttackState() != RE::ATTACK_STATE_ENUM::kNone)
+			{
+				player->data.angle.x -= tps->freeRotation.y;
+				tps->freeRotation.y = 0.0f;
+			}
+			
+			originUpdate(tps, a_nextState);
 
-		tps->toggleAnimCam = bAnimCam;
-		tps->freeRotationEnabled = bFreeRotation;
-	}
-	else
-	{
-		originUpdate(tps, a_nextState);
-	}
+			tps->toggleAnimCam = bAnimCam;
+			tps->freeRotationEnabled = bFreeRotation;
+		}
+		else
+		{
+			originUpdate(tps, a_nextState);
+		}
+	
 }
 
 void Hooks::LoadSettings()

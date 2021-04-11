@@ -207,7 +207,7 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 			auto player = RE::PlayerCharacter::GetSingleton();
 			int iState = 0;
 			player->GetGraphVariableInt("iState", iState);
-			if (iState > 0 && iState != 9)
+			if ( (iState > 0 && iState != 9) || player->IsSwimming())
 			{
 				player->data.angle.x -= tps->freeRotation.y;
 				tps->freeRotation.y = 0.0f;

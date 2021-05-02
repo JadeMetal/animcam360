@@ -18,7 +18,7 @@ static REL::Offset<decltype(UpdateEx)> originUpdate;
 static float SideMoveRotationInputXMin = 0.7f;
 static float SideMoveRotationScale = 0.013f;
 static float MovingTurnMax = 0.3f;
-static float CommitmentTurnMax = 0.01f;
+static float CommitmentTurnMax = 0.00f;
 static int PitchLookControl = 0;
 static int ForceFix = 0;
 
@@ -48,6 +48,8 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 			{
 				rotX = 0;
 			}
+
+			a_data->prevMoveVec = a_data->moveInputVec;
 
 			if (a_data->fovSlideMode)
 			{
@@ -109,9 +111,9 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 					float diffAngleZ = -moveAngle;
 
 					player->data.angle.z = angleZ;
-					tps->freeRotation.x = diffAngleZ;
-
 					player->data.angle.z += (rotX * SideMoveRotationScale);
+					
+					tps->freeRotation.x = diffAngleZ;
 				}
 			}
 			else
@@ -207,6 +209,7 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 			auto player = RE::PlayerCharacter::GetSingleton();
 			int iState = 0;
 			player->GetGraphVariableInt("iState", iState);
+
 			if ( (iState > 0 && iState != 9) || player->IsSwimming())
 			{
 				player->data.angle.x -= tps->freeRotation.y;

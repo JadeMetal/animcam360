@@ -1,6 +1,8 @@
 #include "hooks.h"
 #include "utils.h"
 
+using namespace RE;
+
 void ProcessThumbstickEx(RE::MovementHandler* _this,
 	RE::ThumbstickEvent* a_event,
 	RE::PlayerControlsData* a_data);
@@ -22,8 +24,27 @@ static float CommitmentTurnMax = 0.00f;
 static int PitchLookControl = 0;
 static int ForceFix = 0;
 
+static bool prevAnimcamState = false;
+static int animcamCount = 1;
+
+static inline void ExecuteCommand(std::string a_command)
+{
+	const auto scriptFactory = RE::IFormFactory::GetConcreteFormFactoryByType<RE::Script>();
+	const auto script = scriptFactory ? scriptFactory->Create() : nullptr;
+	if (script) {
+		const auto selectedRef = RE::Console::GetSelectedRef();
+		script->SetCommand(a_command);
+		script->CompileAndRun(selectedRef.get());
+		delete script;
+	}
+}
+
+//===========================================
+// Hook Main Process.
+//===========================================
 bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix = false)
 {
+	static float cachedAngle = 0.0f;
 	if (
 		!RE::PlayerControls::GetSingleton()->movementHandler->inputEventHandlingEnabled
 		|| !RE::PlayerControls::GetSingleton()->lookHandler->inputEventHandlingEnabled
@@ -31,12 +52,27 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 	{
 		return false;
 	}
-
+	
+	static float cachedRad = 0.0f;
 	auto camera = RE::PlayerCamera::GetSingleton();
 	if (camera != nullptr)
 	{
-		auto player = RE::PlayerCharacter::GetSingleton();
+		auto player = RE::PlayerCamera::GetSingleton()->cameraTarget.get();
 		auto tps = static_cast<RE::ThirdPersonState*>(camera->cameraStates[RE::CameraState::kThirdPerson].get());
+		
+		bool bAllowRotation = false;
+		player->GetGraphVariableBool("bAllowRotation", bAllowRotation);
+
+		bool IsAttacking = false;
+		player->GetGraphVariableBool("IsAttacking", IsAttacking);
+
+		if (tps->toggleAnimCam && !prevAnimcamState)
+		{
+			animcamCount += 1;
+		}
+		prevAnimcamState = tps->toggleAnimCam;
+		
+		
 		if (tps != nullptr
 			&& player != nullptr
 			&& camera->cameraStates[RE::CameraState::kThirdPerson].get() == camera->currentState.get()
@@ -65,14 +101,12 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 
 			RE::NiPoint2 r; r.x = 0; r.y = 1;
 
+			float cachedTurnValue = 0.0f;
 			float cossita = DotProduct(l, r) / (VectorMagnitude(l) * VectorMagnitude(r));
 			if (!isnan(cossita))
 			{
-				bool bAllowRotation = false;
-				player->GetGraphVariableBool("bAllowRotation", bAllowRotation);
-
 				//dmc direction lock.
-				if ( player->IsGrabbing() || ForceFix )
+				if (RE::PlayerCharacter::GetSingleton()->IsGrabbing() || ForceFix ) //|| animcamCount % 2))
 				{
 					RE::NiPoint2 inputDir; inputDir.x = 0.0f; inputDir.y = 1.0f;
 					inputDir = Rotate(
@@ -85,7 +119,14 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 				//360move
 				else
 				{
-					const float turnMax = bAllowRotation ? CommitmentTurnMax : MovingTurnMax;
+					static DWORD lastChangeDirectionTime = 0;
+					bool bAllowChangeDirection = false;
+					DWORD currentTime = GetTickCount();
+					bAllowChangeDirection = ( (currentTime - lastChangeDirectionTime) > 1000);
+					if (bAllowChangeDirection) lastChangeDirectionTime = currentTime;
+
+					float turnMax = IsAttacking ? CommitmentTurnMax : MovingTurnMax;
+					turnMax = (IsAttacking && bAllowChangeDirection) ? FLT_MAX : turnMax;
 
 					float rad = NormalAbsoluteAngle(acos(cossita) * (CrossProduct(l, r) < 0 ? -1 : 1));
 
@@ -102,33 +143,54 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 							float diff2 = (M_PI * 2.0f) - absdiffrad;
 							turnValue = diff2 < turnMax ? diff2 : turnMax;
 						}
-
-						rad = NormalAbsoluteAngle((turnValue * (diffrad < 0.0f ? -1.0f : 1.0f)) + freerot);
+						turnValue = turnValue * (diffrad < 0.0f ? -1.0f : 1.0f);
+						cachedTurnValue = turnValue;
+						rad = NormalAbsoluteAngle(turnValue + freerot);
 					}
-
+					float currentAngle = tps->toggleAnimCam ? player->data.angle.z : player->data.angle.z;
 					float moveAngle = rad;
-					float angleZ = NormalAbsoluteAngle(player->data.angle.z + tps->freeRotation.x + moveAngle);
+					float angleZ = NormalAbsoluteAngle(currentAngle + tps->freeRotation.x + moveAngle);
 					float diffAngleZ = -moveAngle;
 
 					player->data.angle.z = angleZ;
 					player->data.angle.z += (rotX * SideMoveRotationScale);
-					
+
 					tps->freeRotation.x = diffAngleZ;
+
+					if (IsAttacking && bAllowChangeDirection)
+					{
+						char commandBuf[256];
+						sprintf_s(commandBuf, "player.sgv bAllowRotation 0");
+						ExecuteCommand(commandBuf);
+						sprintf_s(commandBuf, "player.sgv bMotionDriven 1");
+						ExecuteCommand(commandBuf);
+
+						a_data->moveInputVec.y = 0.05f;
+					}
 				}
 			}
 			else
 			{
+				if (IsAttacking)
+				{
+					char commandBuf[256];
+					sprintf_s(commandBuf, "player.sgv bAllowRotation 1");
+					ExecuteCommand(commandBuf);
+					sprintf_s(commandBuf, "player.sgv bMotionDriven 0");
+					ExecuteCommand(commandBuf);
+				}
+
 				a_data->moveInputVec.y = 0.0f;
 			}
-
 			return true;
 		}
 	}
 	return false;
 }
 
-
+//===========================================
 // Gamepad Moving Update
+//===========================================
 void ProcessThumbstickEx(RE::MovementHandler* _this,
 	RE::ThumbstickEvent* a_event,
 	RE::PlayerControlsData* a_data)
@@ -143,8 +205,9 @@ void ProcessThumbstickEx(RE::MovementHandler* _this,
 	}
 }
 
-
+//===========================================
 // Keyboard Moving Update
+//===========================================
 static RE::NiPoint2 tempbuttonvec;
 
 void ProcessButtonEx(RE::MovementHandler* _this,
@@ -190,7 +253,9 @@ void ProcessButtonEx(RE::MovementHandler* _this,
 	}
 }
 
+//===========================================
 //Rotation Update
+//===========================================
 void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>& a_nextState)
 {
 		bool bAnimCam = false;
@@ -206,7 +271,7 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 			tps->toggleAnimCam = false;
 			tps->freeRotationEnabled = true;
 
-			auto player = RE::PlayerCharacter::GetSingleton();
+			auto player = RE::PlayerCamera::GetSingleton()->cameraTarget.get();
 			int iState = 0;
 			player->GetGraphVariableInt("iState", iState);
 
@@ -215,7 +280,12 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 				player->data.angle.x -= tps->freeRotation.y;
 				tps->freeRotation.y = 0.0f;
 			}
-			
+
+			if (player->currentProcess != nullptr && player->currentProcess->high && nullptr)
+			{
+				player->currentProcess->high->animationAngleMod.z = player->data.angle.z;
+			}
+
 			originUpdate(tps, a_nextState);
 
 			tps->toggleAnimCam = bAnimCam;
@@ -225,7 +295,6 @@ void UpdateEx(RE::ThirdPersonState* tps, RE::BSTSmartPointer<RE::TESCameraState>
 		{
 			originUpdate(tps, a_nextState);
 		}
-	
 }
 
 void Hooks::LoadSettings()

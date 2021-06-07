@@ -21,7 +21,7 @@ RE::BSEventNotifyControl CombatFreeRotateCamera::ProcessEvent(const SKSE::Action
 
 				if (thirdpersoncam2 != nullptr && thirdpersoncam2 == camera->currentState.get())
 				{
-					if (RE::PlayerCharacter::GetSingleton()->IsWeaponDrawn())
+					if (RE::PlayerCamera::GetSingleton()->cameraTarget.get()->IsWeaponDrawn())
 					{
 						if (!camera->isWeapSheathed)
 						{

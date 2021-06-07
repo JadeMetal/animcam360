@@ -20,7 +20,7 @@ static REL::Offset<decltype(UpdateEx)> originUpdate;
 static float SideMoveRotationInputXMin = 0.7f;
 static float SideMoveRotationScale = 0.013f;
 static float MovingTurnMax = 0.3f;
-static float CommitmentTurnMax = 0.00f;
+static float AttackRotationInterval = 200.0f;
 static int PitchLookControl = 0;
 static int ForceFix = 0;
 
@@ -63,8 +63,19 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 		bool bAllowRotation = false;
 		player->GetGraphVariableBool("bAllowRotation", bAllowRotation);
 
-		bool IsAttacking = false;
-		player->GetGraphVariableBool("IsAttacking", IsAttacking);
+		int iState = 0;
+		player->GetGraphVariableInt("iState", iState);
+
+		static bool bWantRevertAllowRotation = false;
+		if (bWantRevertAllowRotation && (iState >= 12 && iState <= 14))
+		{
+			char commandBuf[256];
+			sprintf_s(commandBuf, "player.sgv bAllowRotation 1");
+			ExecuteCommand(commandBuf);
+			sprintf_s(commandBuf, "player.sgv bMotionDriven 0");
+			ExecuteCommand(commandBuf);
+		}
+		bWantRevertAllowRotation = false;
 
 		if (tps->toggleAnimCam && !prevAnimcamState)
 		{
@@ -122,21 +133,19 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 					static DWORD lastChangeDirectionTime = 0;
 					bool bAllowChangeDirection = false;
 					DWORD currentTime = GetTickCount();
-					bAllowChangeDirection = ( (currentTime - lastChangeDirectionTime) > 1000);
+					bAllowChangeDirection = ( (currentTime - lastChangeDirectionTime) > AttackRotationInterval);
 					if (bAllowChangeDirection) lastChangeDirectionTime = currentTime;
 
-					float turnMax = IsAttacking ? CommitmentTurnMax : MovingTurnMax;
-					turnMax = (IsAttacking && bAllowChangeDirection) ? FLT_MAX : turnMax;
+					float turnMax = MovingTurnMax;
 
 					float rad = NormalAbsoluteAngle(acos(cossita) * (CrossProduct(l, r) < 0 ? -1 : 1));
 
 					float freerot = NormalAbsoluteAngle(-tps->freeRotation.x);
 					float diffrad = rad - freerot;
 					float absdiffrad = abs(diffrad);
-					
+					float turnValue = turnMax;
 					if (absdiffrad > turnMax)
 					{
-						float turnValue = turnMax;
 						if (absdiffrad > M_PI)
 						{
 							diffrad = -diffrad;
@@ -157,7 +166,7 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 
 					tps->freeRotation.x = diffAngleZ;
 
-					if (IsAttacking && bAllowChangeDirection)
+					if (bAllowChangeDirection && bAllowRotation && (iState >= 12 && iState <= 14))
 					{
 						char commandBuf[256];
 						sprintf_s(commandBuf, "player.sgv bAllowRotation 0");
@@ -166,20 +175,13 @@ bool Process(RE::NiPoint2* value, RE::PlayerControlsData* a_data, bool forceFix 
 						ExecuteCommand(commandBuf);
 
 						a_data->moveInputVec.y = 0.05f;
+
+						bWantRevertAllowRotation = true;
 					}
 				}
 			}
 			else
 			{
-				if (IsAttacking)
-				{
-					char commandBuf[256];
-					sprintf_s(commandBuf, "player.sgv bAllowRotation 1");
-					ExecuteCommand(commandBuf);
-					sprintf_s(commandBuf, "player.sgv bMotionDriven 0");
-					ExecuteCommand(commandBuf);
-				}
-
 				a_data->moveInputVec.y = 0.0f;
 			}
 			return true;
@@ -313,8 +315,8 @@ void Hooks::LoadSettings()
 	GetPrivateProfileString("General", "fMovingTurnMax", "0.3", buffer, BUF_SIZE, INIPATH);
 	MovingTurnMax = std::atof(buffer);
 
-	GetPrivateProfileString("General", "fCommitmentTurnMax", "0.02", buffer, BUF_SIZE, INIPATH);
-	CommitmentTurnMax = std::atof(buffer);
+	GetPrivateProfileString("General", "AttackRotationInterval", "200.0", buffer, BUF_SIZE, INIPATH);
+	AttackRotationInterval = std::atof(buffer);
 
 	PitchLookControl = GetPrivateProfileInt("General", "iPitchLookControl", 0, INIPATH);
 }
